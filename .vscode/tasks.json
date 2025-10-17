@@ -1,0 +1,25 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Compilar motor gráfico (Beyota + SFML)",
+            "type": "shell",
+            "command": "C:\\msys64\\ucrt64\\bin\\g++.exe",
+            "args": [
+                "${workspaceFolder}/engine/main.cpp",
+                "-I${workspaceFolder}/engine/include",
+                "-L${workspaceFolder}/engine/lib",
+                "-lsfml-graphics",
+                "-lsfml-window",
+                "-lsfml-system",
+                "-o",
+                "${workspaceFolder}/engine/build/beyota.exe"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": ["$gcc"]
+        }
+    ]
+}
