@@ -1,21 +1,16 @@
 #include <SFML/Graphics.hpp>
-#include <optional>
 
 int main() {
-    // En SFML 3, VideoMode ahora recibe un sf::Vector2u
-    sf::RenderWindow window(sf::VideoMode({800, 600}), "Beyota Engine Test");
+    sf::RenderWindow window(sf::VideoMode(800, 600), "Beyota Engine");
 
-    // Loop principal
     while (window.isOpen()) {
-        // pollEvent() devuelve std::optional<sf::Event>
-        while (auto event = window.pollEvent()) {
-            if (event->is<sf::Event::Closed>()) {
+        sf::Event event;
+        while (window.pollEvent(event)) {
+            if (event.type == sf::Event::Closed)
                 window.close();
-            }
         }
 
-        // Limpia la pantalla (azul oscuro)
-        window.clear(sf::Color(30, 30, 80));
+        window.clear(sf::Color::Black);
         window.display();
     }
 
