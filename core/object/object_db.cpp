@@ -8,6 +8,7 @@
 #include "core/object/object.h"
 
 #include <cstdlib>
+#include <mutex>
 
 namespace Beyota {
 
