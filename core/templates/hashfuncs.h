@@ -93,10 +93,16 @@ namespace Beyota {
     return hash_make_uint32_t(h);
 }
 
+[[nodiscard]] constexpr u32 hash_combine(u32 p_seed, u32 p_hash) noexcept {
+    return p_seed ^ (p_hash + 0x9e3779b9u + (p_seed << 6) + (p_seed >> 2));
+}
+
 struct HashMapHasherDefault {
     template <typename T>
     [[nodiscard]] static u32 hash(const T &p_val) noexcept {
         if constexpr (std::is_integral_v<T> || std::is_floating_point_v<T>) {
+            return hash_make_uint32_t(p_val);
+        } else if constexpr (std::is_same_v<T, std::string_view>) {
             return hash_make_uint32_t(p_val);
         } else if constexpr (std::is_pointer_v<T>) {
             return hash_make_uint32_t(reinterpret_cast<uptr>(p_val));
