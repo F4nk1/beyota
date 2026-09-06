@@ -6,9 +6,7 @@
 
 #pragma once
 
-// ============================================================================
-// 1. Verificación del Estándar (C++20 mínimo)
-// ============================================================================
+// 1. C++20 Standard Verification
 #if defined(_MSVC_LANG)
     static_assert(_MSVC_LANG >= 202002L, "Beyota Engine requiere soporte minimo de C++20.");
 #else
@@ -18,9 +16,7 @@
 #include <cstddef>
 #include <cstdint>
 
-// ============================================================================
-// 2. Tipos Primitivos de Ancho Fijo (Aliases de Motor)
-// ============================================================================
+// 2. Fixed-width Primitive Types
 using u8   = std::uint8_t;
 using u16  = std::uint16_t;
 using u32  = std::uint32_t;
@@ -37,9 +33,7 @@ using f64  = double;
 using usize = std::size_t;
 using uptr  = std::uintptr_t;
 
-// ============================================================================
-// 3. Control de Inlining y Compilador
-// ============================================================================
+// 3. Compiler & Inlining Control
 #if defined(_MSC_VER)
     #define BEYOTA_FORCE_INLINE __forceinline
     #define BEYOTA_NO_INLINE    __declspec(noinline)
@@ -54,9 +48,7 @@ using uptr  = std::uintptr_t;
     #define BEYOTA_DEBUG_BREAK()
 #endif
 
-// ============================================================================
-// 4. Atributos Específicos de Análisis Estático
-// ============================================================================
+// 4. Static Analysis Attributes
 #if defined(__has_cpp_attribute)
     #if __has_cpp_attribute(clang::lifetimebound)
         #define BEYOTA_LIFETIMEBOUND [[clang::lifetimebound]]
@@ -69,21 +61,16 @@ using uptr  = std::uintptr_t;
     #define BEYOTA_LIFETIMEBOUND
 #endif
 
-// ============================================================================
-// 5. Utilidades del Preprocesador
-// ============================================================================
+// 5. Preprocessor Utilities
 #define BEYOTA_STRINGIFY_IMPL(x) #x
 #define BEYOTA_STRINGIFY(x) BEYOTA_STRINGIFY_IMPL(x)
 
 #define BEYOTA_CONCAT_IMPL(a, b) a##b
 #define BEYOTA_CONCAT(a, b) BEYOTA_CONCAT_IMPL(a, b)
 
-// Generador de nombres únicos para macros RAII (ej. scopes de profiling)
 #define BEYOTA_ANONYMOUS_VARIABLE(prefix) BEYOTA_CONCAT(prefix, __COUNTER__)
 
-// ============================================================================
-// 6. Supresión de Diagnósticos / Advertencias
-// ============================================================================
+// 6. Diagnostics & Warning Suppression
 #if defined(__clang__)
     #define BEYOTA_PRAGMA(x) _Pragma(#x)
     #define BEYOTA_WARNING_PUSH            BEYOTA_PRAGMA(clang diagnostic push)
