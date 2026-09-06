@@ -11,7 +11,6 @@
 
 #include <atomic>
 #include <cassert>
-#include <charconv>
 #include <compare>
 #include <cstring>
 #include <format>
@@ -24,132 +23,42 @@ class String {
     struct CowData {
         std::atomic<u32> refcount{1};
         u32 length{0};
-        // Data follows immediately in memory: char data[length + 1]
     };
 
-    CowData *_data{nullptr};
+    CowData *data_{nullptr};
 
-    [[nodiscard]] static CowData *alloc_data(usize p_len) {
-        if (p_len == 0) {
-            return nullptr;
-        }
-        void *mem = ::operator new(sizeof(CowData) + p_len + 1);
-        CowData *d = static_cast<CowData *>(mem);
-        d->refcount.store(1, std::memory_order_relaxed);
-        d->length = static_cast<u32>(p_len);
-        return d;
-    }
-
-    static void free_data(CowData *p_data) noexcept {
-        if (p_data != nullptr) {
-            ::operator delete(static_cast<void *>(p_data));
-        }
-    }
-
-    void _ref(const CowData *p_data) noexcept {
-        if (p_data != nullptr) {
-            const_cast<CowData *>(p_data)->refcount.fetch_add(1, std::memory_order_relaxed);
-        }
-    }
-
-    void _unref() noexcept {
-        if (_data != nullptr) {
-            if (_data->refcount.fetch_sub(1, std::memory_order_acq_rel) == 1) {
-                free_data(_data);
-            }
-            _data = nullptr;
-        }
-    }
+    [[nodiscard]] static CowData *alloc_data(usize p_len);
+    static void free_data(CowData *p_data) noexcept;
+    void ref_data(const CowData *p_data) noexcept;
+    void unref_data() noexcept;
 
     [[nodiscard]] char *data_ptr() noexcept {
-        return _data ? reinterpret_cast<char *>(_data + 1) : nullptr;
+        return data_ ? reinterpret_cast<char *>(data_ + 1) : nullptr;
     }
 
     [[nodiscard]] const char *data_ptr() const noexcept {
-        return _data ? reinterpret_cast<const char *>(_data + 1) : nullptr;
+        return data_ ? reinterpret_cast<const char *>(data_ + 1) : nullptr;
     }
 
-    void _detach_if_shared() {
-        if (_data && _data->refcount.load(std::memory_order_relaxed) > 1) {
-            CowData *new_data = alloc_data(_data->length);
-            std::memcpy(reinterpret_cast<char *>(new_data + 1), data_ptr(), _data->length + 1);
-            _unref();
-            _data = new_data;
-        }
-    }
+    void detach_if_shared();
 
 public:
     constexpr String() noexcept = default;
 
-    String(const char *p_str) {
-        if (p_str != nullptr) {
-            usize len = std::strlen(p_str);
-            if (len > 0) {
-                _data = alloc_data(len);
-                std::memcpy(data_ptr(), p_str, len);
-                data_ptr()[len] = '\0';
-            }
-        }
-    }
+    String(const char *p_str);
+    String(std::string_view p_view);
+    String(const char *p_str, usize p_len);
+    String(const String &p_other) noexcept;
+    String(String &&p_other) noexcept;
+    ~String() noexcept;
 
-    String(std::string_view p_view) {
-        if (!p_view.empty()) {
-            _data = alloc_data(p_view.length());
-            std::memcpy(data_ptr(), p_view.data(), p_view.length());
-            data_ptr()[p_view.length()] = '\0';
-        }
-    }
-
-    String(const char *p_str, usize p_len) {
-        if (p_str != nullptr && p_len > 0) {
-            _data = alloc_data(p_len);
-            std::memcpy(data_ptr(), p_str, p_len);
-            data_ptr()[p_len] = '\0';
-        }
-    }
-
-    String(const String &p_other) noexcept : _data(p_other._data) {
-        _ref(_data);
-    }
-
-    String(String &&p_other) noexcept : _data(p_other._data) {
-        p_other._data = nullptr;
-    }
-
-    ~String() noexcept {
-        _unref();
-    }
-
-    String &operator=(const String &p_other) noexcept {
-        if (this != &p_other) {
-            _unref();
-            _data = p_other._data;
-            _ref(_data);
-        }
-        return *this;
-    }
-
-    String &operator=(String &&p_other) noexcept {
-        if (this != &p_other) {
-            _unref();
-            _data = p_other._data;
-            p_other._data = nullptr;
-        }
-        return *this;
-    }
-
-    String &operator=(const char *p_str) {
-        *this = String(p_str);
-        return *this;
-    }
-
-    String &operator=(std::string_view p_view) {
-        *this = String(p_view);
-        return *this;
-    }
+    String &operator=(const String &p_other) noexcept;
+    String &operator=(String &&p_other) noexcept;
+    String &operator=(const char *p_str);
+    String &operator=(std::string_view p_view);
 
     [[nodiscard]] usize length() const noexcept {
-        return _data ? _data->length : 0;
+        return data_ ? data_->length : 0;
     }
 
     [[nodiscard]] usize size() const noexcept {
@@ -157,7 +66,7 @@ public:
     }
 
     [[nodiscard]] bool is_empty() const noexcept {
-        return _data == nullptr || _data->length == 0;
+        return data_ == nullptr || data_->length == 0;
     }
 
     [[nodiscard]] const char *c_str() const noexcept {
@@ -170,7 +79,7 @@ public:
     }
 
     [[nodiscard]] std::string_view as_string_view() const noexcept {
-        return _data ? std::string_view(data_ptr(), _data->length) : std::string_view{};
+        return data_ ? std::string_view(data_ptr(), data_->length) : std::string_view{};
     }
 
     [[nodiscard]] operator std::string_view() const noexcept {
@@ -184,7 +93,7 @@ public:
 
     [[nodiscard]] char &operator[](usize p_idx) {
         assert(p_idx < length());
-        _detach_if_shared();
+        detach_if_shared();
         return data_ptr()[p_idx];
     }
 
@@ -192,177 +101,8 @@ public:
         return hash_make_uint32_t(as_string_view());
     }
 
-    [[nodiscard]] bool contains(std::string_view p_sub) const noexcept {
-        return as_string_view().find(p_sub) != std::string_view::npos;
-    }
-
-    [[nodiscard]] i64 find(std::string_view p_sub, usize p_from = 0) const noexcept {
-        auto pos = as_string_view().find(p_sub, p_from);
-        return pos == std::string_view::npos ? -1 : static_cast<i64>(pos);
-    }
-
-    [[nodiscard]] bool begins_with(std::string_view p_prefix) const noexcept {
-        return as_string_view().starts_with(p_prefix);
-    }
-
-    [[nodiscard]] bool ends_with(std::string_view p_suffix) const noexcept {
-        return as_string_view().ends_with(p_suffix);
-    }
-
-    [[nodiscard]] String substr(usize p_from, usize p_len = static_cast<usize>(-1)) const {
-        if (p_from >= length()) {
-            return String();
-        }
-        std::string_view sv = as_string_view().substr(p_from, p_len);
-        return String(sv);
-    }
-
-    [[nodiscard]] String replace(std::string_view p_what, std::string_view p_for_what) const {
-        if (p_what.empty() || is_empty()) {
-            return *this;
-        }
-        std::string_view src = as_string_view();
-        std::string res;
-        usize pos = 0;
-        while (pos < src.length()) {
-            usize next = src.find(p_what, pos);
-            if (next == std::string_view::npos) {
-                res.append(src.substr(pos));
-                break;
-            }
-            res.append(src.substr(pos, next - pos));
-            res.append(p_for_what);
-            pos = next + p_what.length();
-        }
-        return String(res);
-    }
-
-    [[nodiscard]] std::vector<String> split(std::string_view p_delim, bool p_allow_empty = true) const {
-        std::vector<String> result;
-        if (p_delim.empty()) {
-            result.push_back(*this);
-            return result;
-        }
-        std::string_view sv = as_string_view();
-        usize start = 0;
-        while (start <= sv.length()) {
-            usize end = sv.find(p_delim, start);
-            if (end == std::string_view::npos) {
-                std::string_view part = sv.substr(start);
-                if (p_allow_empty || !part.empty()) {
-                    result.emplace_back(part);
-                }
-                break;
-            }
-            std::string_view part = sv.substr(start, end - start);
-            if (p_allow_empty || !part.empty()) {
-                result.emplace_back(part);
-            }
-            start = end + p_delim.length();
-        }
-        return result;
-    }
-
-    [[nodiscard]] i64 to_int() const noexcept {
-        i64 val = 0;
-        std::string_view sv = as_string_view();
-        while (!sv.empty() && (sv.front() == ' ' || sv.front() == '\t')) {
-            sv.remove_prefix(1);
-        }
-        if (sv.empty()) return 0;
-        std::from_chars(sv.data(), sv.data() + sv.size(), val);
-        return val;
-    }
-
-    [[nodiscard]] f64 to_float() const noexcept {
-        std::string_view sv = as_string_view();
-        while (!sv.empty() && (sv.front() == ' ' || sv.front() == '\t')) {
-            sv.remove_prefix(1);
-        }
-        if (sv.empty()) return 0.0;
-        char *endptr = nullptr;
-        return std::strtod(sv.data(), &endptr);
-    }
-
-    static String num_int64(i64 p_num) {
-        char buf[32];
-        auto res = std::to_chars(buf, buf + sizeof(buf), p_num);
-        return String(buf, res.ptr - buf);
-    }
-
-    static String num_real(f64 p_num) {
-        return String(std::format("{}", p_num));
-    }
-
-    String &operator+=(const String &p_other) {
-        if (p_other.is_empty()) {
-            return *this;
-        }
-        if (is_empty()) {
-            *this = p_other;
-            return *this;
-        }
-        usize new_len = length() + p_other.length();
-        CowData *new_data = alloc_data(new_len);
-        char *dst = reinterpret_cast<char *>(new_data + 1);
-        std::memcpy(dst, data_ptr(), length());
-        std::memcpy(dst + length(), p_other.data_ptr(), p_other.length());
-        dst[new_len] = '\0';
-        _unref();
-        _data = new_data;
-        return *this;
-    }
-
-    String &operator+=(std::string_view p_other) {
-        if (p_other.empty()) {
-            return *this;
-        }
-        if (is_empty()) {
-            *this = String(p_other);
-            return *this;
-        }
-        usize new_len = length() + p_other.length();
-        CowData *new_data = alloc_data(new_len);
-        char *dst = reinterpret_cast<char *>(new_data + 1);
-        std::memcpy(dst, data_ptr(), length());
-        std::memcpy(dst + length(), p_other.data(), p_other.length());
-        dst[new_len] = '\0';
-        _unref();
-        _data = new_data;
-        return *this;
-    }
-
-    String &operator+=(const char *p_other) {
-        if (p_other != nullptr) {
-            *this += std::string_view(p_other);
-        }
-        return *this;
-    }
-
-    String &operator+=(char p_char) {
-        return *this += std::string_view(&p_char, 1);
-    }
-
-    [[nodiscard]] String operator+(const String &p_other) const {
-        String s = *this;
-        s += p_other;
-        return s;
-    }
-
-    [[nodiscard]] String operator+(std::string_view p_other) const {
-        String s = *this;
-        s += p_other;
-        return s;
-    }
-
-    [[nodiscard]] String operator+(const char *p_other) const {
-        String s = *this;
-        s += p_other;
-        return s;
-    }
-
     [[nodiscard]] bool operator==(const String &p_other) const noexcept {
-        if (_data == p_other._data) {
+        if (data_ == p_other.data_) {
             return true;
         }
         return as_string_view() == p_other.as_string_view();
@@ -377,7 +117,7 @@ public:
     }
 
     [[nodiscard]] auto operator<=>(const String &p_other) const noexcept {
-        if (_data == p_other._data) {
+        if (data_ == p_other.data_) {
             return std::strong_ordering::equal;
         }
         return as_string_view() <=> p_other.as_string_view();
@@ -385,6 +125,96 @@ public:
 
     [[nodiscard]] auto operator<=>(std::string_view p_other) const noexcept {
         return as_string_view() <=> p_other;
+    }
+
+    String &operator+=(const String &p_other);
+    String &operator+=(std::string_view p_other);
+    String &operator+=(const char *p_other);
+    String &operator+=(char p_char);
+
+    [[nodiscard]] String operator+(const String &p_other) const;
+    [[nodiscard]] String operator+(std::string_view p_other) const;
+    [[nodiscard]] String operator+(const char *p_other) const;
+
+    // Substring and Navigation
+    [[nodiscard]] String substr(usize p_from, usize p_len = static_cast<usize>(-1)) const;
+    [[nodiscard]] String left(i64 p_len) const;
+    [[nodiscard]] String right(i64 p_len) const;
+
+    // Search and Predicates
+    [[nodiscard]] bool contains(std::string_view p_sub) const noexcept;
+    [[nodiscard]] i64 find(std::string_view p_sub, usize p_from = 0) const noexcept;
+    [[nodiscard]] i64 rfind(std::string_view p_sub, i64 p_from = -1) const noexcept;
+    [[nodiscard]] i64 findn(std::string_view p_sub, usize p_from = 0) const noexcept;
+    [[nodiscard]] i64 rfindn(std::string_view p_sub, i64 p_from = -1) const noexcept;
+    [[nodiscard]] bool begins_with(std::string_view p_prefix) const noexcept;
+    [[nodiscard]] bool ends_with(std::string_view p_suffix) const noexcept;
+
+    // Case Transformations
+    [[nodiscard]] String to_lower() const;
+    [[nodiscard]] String to_upper() const;
+    [[nodiscard]] String capitalize() const;
+    [[nodiscard]] String to_camel_case() const;
+    [[nodiscard]] String to_pascal_case() const;
+    [[nodiscard]] String to_snake_case() const;
+    [[nodiscard]] String to_kebab_case() const;
+    [[nodiscard]] String camelcase_to_underscore() const;
+
+    // Trimming and Padding
+    [[nodiscard]] String strip_edges(bool p_left = true, bool p_right = true) const;
+    [[nodiscard]] String strip_escapes() const;
+    [[nodiscard]] String lstrip(std::string_view p_chars) const;
+    [[nodiscard]] String rstrip(std::string_view p_chars) const;
+    [[nodiscard]] String trim_prefix(std::string_view p_prefix) const;
+    [[nodiscard]] String trim_suffix(std::string_view p_suffix) const;
+    [[nodiscard]] String lpad(usize p_min_len, char p_character = ' ') const;
+    [[nodiscard]] String rpad(usize p_min_len, char p_character = ' ') const;
+    [[nodiscard]] String pad_zeros(usize p_digits) const;
+    [[nodiscard]] String pad_decimals(usize p_digits) const;
+
+    // Replacement, Split and Join
+    [[nodiscard]] String replace(std::string_view p_what, std::string_view p_for_what) const;
+    [[nodiscard]] String replacen(std::string_view p_what, std::string_view p_for_what) const;
+    [[nodiscard]] std::vector<String> split(std::string_view p_delim, bool p_allow_empty = true, i32 p_maxsplit = 0) const;
+    [[nodiscard]] std::vector<String> rsplit(std::string_view p_delim, bool p_allow_empty = true, i32 p_maxsplit = 0) const;
+    [[nodiscard]] String join(const std::vector<String> &p_parts) const;
+
+    // Path Operations
+    [[nodiscard]] String get_base_dir() const;
+    [[nodiscard]] String get_file() const;
+    [[nodiscard]] String get_extension() const;
+    [[nodiscard]] String get_basename() const;
+    [[nodiscard]] String path_join(const String &p_file) const;
+    [[nodiscard]] String simplify_path() const;
+    [[nodiscard]] bool is_absolute_path() const noexcept;
+    [[nodiscard]] bool is_relative_path() const noexcept;
+
+    // Escaping
+    [[nodiscard]] String c_escape() const;
+    [[nodiscard]] String c_unescape() const;
+    [[nodiscard]] String json_escape() const;
+    [[nodiscard]] String xml_escape(bool p_escape_quotes = false) const;
+
+    // Conversions and Validation
+    [[nodiscard]] i64 to_int() const noexcept;
+    [[nodiscard]] f64 to_float() const noexcept;
+    [[nodiscard]] i64 hex_to_int() const noexcept;
+    [[nodiscard]] i64 bin_to_int() const noexcept;
+    [[nodiscard]] bool is_valid_int() const noexcept;
+    [[nodiscard]] bool is_valid_float() const noexcept;
+    [[nodiscard]] bool is_valid_hex_number() const noexcept;
+    [[nodiscard]] bool is_valid_identifier() const noexcept;
+    [[nodiscard]] bool is_valid_filename() const noexcept;
+
+    // Static Helpers
+    static String num_int64(i64 p_num);
+    static String num_uint64(u64 p_num);
+    static String num_real(f64 p_num);
+    static String chr(char32_t p_char);
+    static char32_t ord(char p_char) noexcept;
+
+    void clear() noexcept {
+        unref_data();
     }
 };
 
