@@ -7,6 +7,8 @@
 #include "core/object/class_db.h"
 #include "core/object/object.h"
 
+#include <mutex>
+
 namespace Beyota {
 
 void ClassDB::setup() {
